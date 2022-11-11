@@ -6,8 +6,12 @@ RUN dnf update -y && \
     dnf install -y php-pecl-imagick unzip && \
     dnf clean all
 
-# Create run dir for php-fpm
-RUN mkdir /run/php-fpm 
+# Create run dir for php-fpm, set permissions to non-root
+RUN mkdir /run/php-fpm && chown apache:apache -R /run/php-fpm
+
+# set apache dir permissions for non-root
+RUN chown apache:apache -R /run/httpd
+RUN chown apache:apache -R /var/www/html
 
 # Copy in wordpress zip
 # download from: https://wordpress.org/latest.zip
@@ -17,23 +21,23 @@ COPY ./latest.zip /
 COPY ./entrypoint.sh /
 RUN chmod 755 /entrypoint.sh
 
+# customized config files for apache and php-fpm to start as non-root
+COPY etc/httpd/conf/httpd.conf /etc/httpd/conf/httpd.conf
+COPY etc/php-fpm.conf /etc/php-fpm.conf
+COPY etc/php-fpm.d/www.conf /etc/php-fpm.d/www.conf
+COPY etc/php.ini /etc/php.ini
+
 # Clean up anything in /var/www/html
 RUN rm -rf /var/www/html/*
 
-# Set Apache to log to stdout instead of file
-RUN sed -i 's/ErrorLog \"logs\/error_log\"/ErrorLog \"\/dev\/stdout\"/g' /etc/httpd/conf/httpd.conf
-RUN sed -i 's/CustomLog \"logs\/access_log\" combined/CustomLog \"\/dev\/stdout\" combined/g' /etc/httpd/conf/httpd.conf
-
-# Allow permalinks changing in wordpress to work
-# replaces 2nd occurence in httpd.conf of AllowOverride None to AllowOverride All. 
-# this could get sketchy if httpd conf changes but didn't want to provide my own httpd.conf at this point
-RUN sed -i -z 's/AllowOverride None/AllowOverride All/2' /etc/httpd/conf/httpd.conf
-
-# Probably not needed, but Apache is running on port 80 so expose it
-EXPOSE 80
+# use 8080 so process can start non-root
+EXPOSE 8080
 
 # Define volume for persistent website data
 VOLUME ["/var/www/html"]
+
+# set user to apache uid
+USER apache:apache
 
 # Launch point when container is run
 ENTRYPOINT ["/entrypoint.sh"]
